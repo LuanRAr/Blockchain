@@ -1,0 +1,396 @@
+# docker-compose para rodar o sistema Ormuz distribuído em 4 PCs.
+#
+# Cada PC sobe apenas o profile do seu setor:
+#   docker compose --profile norte up -d   → PC Norte  (172.16.201.10)
+#   docker compose --profile sul   up -d   → PC Sul    (172.16.201.7)
+#   docker compose --profile leste up -d   → PC Leste  (172.16.201.8)
+#   docker compose --profile oeste up -d   → PC Oeste  (172.16.201.16)
+#
+# IPs reais das máquinas:
+#   Norte  172.16.201.10   Sul    172.16.201.7
+#   Leste  172.16.201.8    Oeste  172.16.201.16
+#
+# Portas expostas no host (mesmas de antes):
+#   Ledger : 7007 (norte) | 7008 (sul) | 7011 (leste) | 7012 (oeste)
+#   Broker : 5007 (norte) | 5008 (sul) | 5011 (leste) | 5012 (oeste)
+#
+# Os serviços de cada PC usam network_mode: host para que os peers
+# externos (outros PCs) possam alcançar as portas diretamente via IP real.
+
+services:
+
+  # ─── Ledger ─────────────────────────────────────────────────────────────────
+
+  ledger-norte:
+    profiles: [norte]
+    build:
+      context: .
+      args:
+        TARGET: ledger
+    container_name: ledger_norte
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - NODE_ID=ledger-norte
+      - PORT=7007
+      - GENESIS=true
+      - DIFFICULTY=3
+      - PEERS=172.16.201.7:7008,172.16.201.8:7011,172.16.201.16:7012
+
+  ledger-sul:
+    profiles: [sul]
+    build:
+      context: .
+      args:
+        TARGET: ledger
+    container_name: ledger_sul
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - NODE_ID=ledger-sul
+      - PORT=7008
+      - GENESIS=false
+      - DIFFICULTY=3
+      - PEERS=172.16.201.10:7007,172.16.201.8:7011,172.16.201.16:7012
+
+  ledger-leste:
+    profiles: [leste]
+    build:
+      context: .
+      args:
+        TARGET: ledger
+    container_name: ledger_leste
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - NODE_ID=ledger-leste
+      - PORT=7011
+      - GENESIS=false
+      - DIFFICULTY=3
+      - PEERS=172.16.201.10:7007,172.16.201.7:7008,172.16.201.16:7012
+
+  ledger-oeste:
+    profiles: [oeste]
+    build:
+      context: .
+      args:
+        TARGET: ledger
+    container_name: ledger_oeste
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - NODE_ID=ledger-oeste
+      - PORT=7012
+      - GENESIS=false
+      - DIFFICULTY=3
+      - PEERS=172.16.201.10:7007,172.16.201.7:7008,172.16.201.8:7011
+
+  # ─── Brokers ─────────────────────────────────────────────────────────────────
+
+  broker-norte:
+    profiles: [norte]
+    build:
+      context: .
+      args:
+        TARGET: broker
+    container_name: broker_norte
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Norte
+      - PORT=5007
+      - MY_IP=172.16.201.10
+      - RING_ADDRS=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+      - LEDGER_NODES=172.16.201.10:7007,172.16.201.7:7008,172.16.201.8:7011,172.16.201.16:7012
+
+  broker-sul:
+    profiles: [sul]
+    build:
+      context: .
+      args:
+        TARGET: broker
+    container_name: broker_sul
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Sul
+      - PORT=5008
+      - MY_IP=172.16.201.7
+      - RING_ADDRS=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+      - LEDGER_NODES=172.16.201.10:7007,172.16.201.7:7008,172.16.201.8:7011,172.16.201.16:7012
+
+  broker-leste:
+    profiles: [leste]
+    build:
+      context: .
+      args:
+        TARGET: broker
+    container_name: broker_leste
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Leste
+      - PORT=5011
+      - MY_IP=172.16.201.8
+      - RING_ADDRS=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+      - LEDGER_NODES=172.16.201.10:7007,172.16.201.7:7008,172.16.201.8:7011,172.16.201.16:7012
+
+  broker-oeste:
+    profiles: [oeste]
+    build:
+      context: .
+      args:
+        TARGET: broker
+    container_name: broker_oeste
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Oeste
+      - PORT=5012
+      - MY_IP=172.16.201.16
+      - RING_ADDRS=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+      - LEDGER_NODES=172.16.201.10:7007,172.16.201.7:7008,172.16.201.8:7011,172.16.201.16:7012
+
+  # ─── Sensores ────────────────────────────────────────────────────────────────
+
+  sensor-norte-radar:
+    profiles: [norte]
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_norte_radar
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Norte
+      - SENSOR_TYPE=Radar
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  sensor-norte-naval:
+    profiles: [norte]
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_norte_naval
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Norte
+      - SENSOR_TYPE=Naval
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  sensor-sul-radar:
+    profiles: [sul]
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_sul_radar
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Sul
+      - SENSOR_TYPE=Radar
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  sensor-sul-naval:
+    profiles: [sul]
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_sul_naval
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Sul
+      - SENSOR_TYPE=Naval
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  sensor-leste-radar:
+    profiles: [leste]
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_leste_radar
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Leste
+      - SENSOR_TYPE=Radar
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  sensor-leste-naval:
+    profiles: [leste]
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_leste_naval
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Leste
+      - SENSOR_TYPE=Naval
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  sensor-oeste-radar:
+    profiles: [oeste]
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_oeste_radar
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Oeste
+      - SENSOR_TYPE=Radar
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  sensor-oeste-naval:
+    profiles: [oeste]
+    build:
+      context: .
+      args:
+        TARGET: sensor
+    container_name: sensor_oeste_naval
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Oeste
+      - SENSOR_TYPE=Naval
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  # ─── Drones ──────────────────────────────────────────────────────────────────
+
+  drone-norte-01:
+    profiles: [norte]
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_norte_01
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Norte
+      - DRONE_ID=DRONE-NORTE-A
+      - DRONE_PORT=6031
+      - MY_IP=172.16.201.10
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  drone-norte-02:
+    profiles: [norte]
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_norte_02
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Norte
+      - DRONE_ID=DRONE-NORTE-B
+      - DRONE_PORT=6032
+      - MY_IP=172.16.201.10
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  drone-sul-01:
+    profiles: [sul]
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_sul_01
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Sul
+      - DRONE_ID=DRONE-SUL-A
+      - DRONE_PORT=6033
+      - MY_IP=172.16.201.7
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  drone-sul-02:
+    profiles: [sul]
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_sul_02
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Sul
+      - DRONE_ID=DRONE-SUL-B
+      - DRONE_PORT=6034
+      - MY_IP=172.16.201.7
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  drone-leste-01:
+    profiles: [leste]
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_leste_01
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Leste
+      - DRONE_ID=DRONE-LESTE-A
+      - DRONE_PORT=6035
+      - MY_IP=172.16.201.8
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  drone-leste-02:
+    profiles: [leste]
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_leste_02
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Leste
+      - DRONE_ID=DRONE-LESTE-B
+      - DRONE_PORT=6036
+      - MY_IP=172.16.201.8
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  drone-oeste-01:
+    profiles: [oeste]
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_oeste_01
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Oeste
+      - DRONE_ID=DRONE-OESTE-A
+      - DRONE_PORT=6037
+      - MY_IP=172.16.201.16
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
+
+  drone-oeste-02:
+    profiles: [oeste]
+    build:
+      context: .
+      args:
+        TARGET: drone
+    container_name: drone_oeste_02
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SECTOR_NAME=Oeste
+      - DRONE_ID=DRONE-OESTE-B
+      - DRONE_PORT=6038
+      - MY_IP=172.16.201.16
+      - BROKER_LIST=172.16.201.10:5007,172.16.201.7:5008,172.16.201.8:5011,172.16.201.16:5012
