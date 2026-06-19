@@ -33,6 +33,39 @@ type DronePayload struct {
 	Timestamp time.Time `json:"timestamp"`
 	// Addr é enviado no DRONE_REGISTER e no DRONE_HEARTBEAT pra q qualquer broker que receber a mensagem saiba onde alcançar este drone.
 	Addr string `json:"addr,omitempty"`
+	// Result é o laudo da missão, preenchido apenas no DRONE_DONE.
+	// Exemplos: "rota_segura", "obstaculo_detectado", "atividade_suspeita", "area_interditada".
+	Result string `json:"result,omitempty"`
+}
+
+// missionResults é o conjunto de laudos possíveis que um drone pode reportar ao concluir uma missão.
+// O resultado é sorteado com distribuição de probabilidade realista:
+//   60% rota segura, 20% obstáculo, 15% atividade suspeita, 5% área interditada.
+var missionResults = []struct {
+	result string
+	weight int
+}{
+	{"rota_segura", 60},
+	{"obstaculo_detectado", 20},
+	{"atividade_suspeita", 15},
+	{"area_interditada", 5},
+}
+
+// pickResult sorteia um laudo com base nos pesos definidos em missionResults.
+func pickResult() string {
+	total := 0
+	for _, r := range missionResults {
+		total += r.weight
+	}
+	roll := rng.Intn(total)
+	acc := 0
+	for _, r := range missionResults {
+		acc += r.weight
+		if roll < acc {
+			return r.result
+		}
+	}
+	return "rota_segura"
 }
 
 //DispatchPayload espelha o struct do broker.
@@ -284,12 +317,14 @@ func (d *Drone) missionLoop() {
 		fmt.Printf("[%s] executando missão %s por %v\n", d.ID, missionID, dur)
 		time.Sleep(dur)
 
-		d.reportDone(missionID)
+		result := pickResult()
+		fmt.Printf("[%s] missão %s concluída | laudo: %s\n", d.ID, missionID, result)
+		d.reportDone(missionID, result)
 	}
 }
 
 //-------------conclusão de missão
-func (d *Drone) reportDone(missionID string) {
+func (d *Drone) reportDone(missionID, result string) {
 	msg := Message{
 		Type: MsgDroneDone,
 		Payload: DronePayload{
@@ -298,6 +333,7 @@ func (d *Drone) reportDone(missionID string) {
 			Status:    "AVAILABLE",
 			MissionID: missionID,
 			Addr:      d.Addr,
+			Result:    result,
 			Timestamp: time.Now(),
 		},
 	}

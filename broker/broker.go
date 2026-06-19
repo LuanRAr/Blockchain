@@ -1,6 +1,10 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -147,6 +151,8 @@ type MissionRecord struct {
 	CreatedAt    time.Time     `json:"created_at"`
 	DispatchedAt *time.Time    `json:"dispatched_at,omitempty"`
 	FinishedAt   *time.Time    `json:"finished_at,omitempty"`
+	Signature    string        `json:"signature,omitempty"`
+	SignedBy     string        `json:"signed_by,omitempty"`
 }
 
 // carrega o estado global compartilhado pelo anel
@@ -163,6 +169,9 @@ type TokenPayload struct {
 
 	// Log histórico completo de todas as missões
 	MissionLog map[string]*MissionRecord `json:"mission_log"`
+
+	// chaves públicas dos brokers para verificação de assinaturas
+	PublicKeys map[string]string `json:"public_keys,omitempty"`
 }
 
 // -------------estado do drone
@@ -214,6 +223,10 @@ type Broker struct {
 	// ledgerNodes: endereços dos nós do ledger (IP:porta)
 	// configurado via variável de ambiente LEDGER_NODES
 	ledgerNodes []string
+
+	// chaves criptográficas assimétricas do Broker
+	privateKey ed25519.PrivateKey
+	publicKey  ed25519.PublicKey
 }
 
 func NewBroker(name, port, myAddr string, ring []string) *Broker {
@@ -231,6 +244,7 @@ func NewBroker(name, port, myAddr string, ring []string) *Broker {
 			Assigned:      make(map[string]string),
 			DroneStatus:   make(map[string]string),
 			MissionLog:    make(map[string]*MissionRecord),
+			PublicKeys:    make(map[string]string),
 		},
 	}
 	//inicialmente considera todos os peers offline até o ping confirmar
@@ -239,7 +253,109 @@ func NewBroker(name, port, myAddr string, ring []string) *Broker {
 			b.peerAlive[addr] = false
 		}
 	}
+	b.loadOrCreateKeys()
 	return b
+}
+
+// -------------assinatura digital de reservas de missão
+func (b *Broker) loadOrCreateKeys() {
+	keyDir := "keys"
+	os.MkdirAll(keyDir, 0700)
+	privPath := fmt.Sprintf("%s/%s.priv", keyDir, b.Name)
+	pubPath := fmt.Sprintf("%s/%s.pub", keyDir, b.Name)
+
+	privBytes, err := os.ReadFile(privPath)
+	if err == nil && len(privBytes) == ed25519.PrivateKeySize {
+		b.privateKey = ed25519.PrivateKey(privBytes)
+		pubBytes, err := os.ReadFile(pubPath)
+		if err == nil && len(pubBytes) == ed25519.PublicKeySize {
+			b.publicKey = ed25519.PublicKey(pubBytes)
+			fmt.Printf("[%s] Chaves criptográficas Ed25519 carregadas com sucesso\n", b.Name)
+			return
+		}
+	}
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		seed := sha256.Sum256([]byte(b.Name + "_fallback_secret_seed"))
+		priv = ed25519.NewKeyFromSeed(seed[:])
+		pub = priv.Public().(ed25519.PublicKey)
+	}
+
+	b.privateKey = priv
+	b.publicKey = pub
+
+	os.WriteFile(privPath, priv, 0600)
+	os.WriteFile(pubPath, pub, 0644)
+	fmt.Printf("[%s] Novo par de chaves Ed25519 gerado e salvo em %s\n", b.Name, privPath)
+}
+
+func (b *Broker) signRecord(r *MissionRecord) {
+	dispatchedStr := ""
+	if r.DispatchedAt != nil {
+		dispatchedStr = r.DispatchedAt.Format(time.RFC3339)
+	}
+	finishedStr := ""
+	if r.FinishedAt != nil {
+		finishedStr = r.FinishedAt.Format(time.RFC3339)
+	}
+	data := fmt.Sprintf("%s|%s|%s|%d|%s|%s|%s|%s|%s",
+		r.AlertID, r.Sector, r.AlertType, r.Priority, r.DroneID, r.Company, r.Result, string(r.Status), dispatchedStr)
+	if r.Status == MissionDone {
+		data += "|" + finishedStr
+	}
+	sig := ed25519.Sign(b.privateKey, []byte(data))
+	r.Signature = hex.EncodeToString(sig)
+	r.SignedBy = b.Name
+}
+
+func (b *Broker) verifyRecord(r *MissionRecord) bool {
+	if r.Signature == "" || r.SignedBy == "" {
+		return false
+	}
+	pubKeyHex, ok := b.tokenData.PublicKeys[r.SignedBy]
+	if !ok {
+		pubKeyHex, ok = b.backupTokenData.PublicKeys[r.SignedBy]
+		if !ok {
+			return false
+		}
+	}
+	pubKeyBytes, err := hex.DecodeString(pubKeyHex)
+	if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
+		return false
+	}
+	pubKey := ed25519.PublicKey(pubKeyBytes)
+	sig, err := hex.DecodeString(r.Signature)
+	if err != nil {
+		return false
+	}
+
+	dispatchedStr := ""
+	if r.DispatchedAt != nil {
+		dispatchedStr = r.DispatchedAt.Format(time.RFC3339)
+	}
+	finishedStr := ""
+	if r.FinishedAt != nil {
+		finishedStr = r.FinishedAt.Format(time.RFC3339)
+	}
+	data := fmt.Sprintf("%s|%s|%s|%d|%s|%s|%s|%s|%s",
+		r.AlertID, r.Sector, r.AlertType, r.Priority, r.DroneID, r.Company, r.Result, string(r.Status), dispatchedStr)
+	if r.Status == MissionDone {
+		data += "|" + finishedStr
+	}
+	return ed25519.Verify(pubKey, []byte(data), sig)
+}
+
+func (b *Broker) verifyAllRecords() bool {
+	for id, r := range b.tokenData.MissionLog {
+		if r.Signature != "" {
+			if !b.verifyRecord(r) {
+				fmt.Printf("[%s] ⚠️ CRITICAL: Assinatura inválida detectada na missão %s (assinada por %s)!\n", b.Name, id, r.SignedBy)
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // -------------main
@@ -479,13 +595,14 @@ func (b *Broker) handleDroneDone(p DronePayload) {
 			if resultSnap != "" {
 				r.Result = resultSnap
 			}
+			b.signRecord(r) // ASSINA A CONCLUSÃO DA MISSÃO NO LOG!
 		})
 	}
 	b.tokenMu.Unlock()
 
-	// Registra a conclusão da missão como laudo imutável no ledger (assíncrono)
+	// Registra a conclusão da missão no ledger: cobrança definitiva e laudo unificado (assíncrono)
 	if p.MissionID != "" {
-		go b.ledgerRecordDone(p.DroneID, p.MissionID, p.Result)
+		go b.ledgerSubmitDoneTransaction(p.MissionID, p.DroneID, p.Result)
 	}
 }
 
@@ -539,16 +656,11 @@ func (b *Broker) receberToken(p TokenPayload) {
 	b.hasToken = true
 	b.lastTokenSeen = time.Now()
 
-	// Mescla o DroneStatus recebido com o estado local
+	// Mescla o DroneStatus recebido com o estado local (apenas adiciona novos, sem sobrescrever estados ativos)
 	incomingStatus := p.DroneStatus
 	p.DroneStatus = make(map[string]string, len(incomingStatus))
 	for droneID, incomingS := range incomingStatus {
-		localS, hasLocal := b.tokenData.DroneStatus[droneID]
-		if hasLocal && localS == "AVAILABLE" && incomingS != "AVAILABLE" {
-			p.DroneStatus[droneID] = "AVAILABLE"
-		} else {
-			p.DroneStatus[droneID] = incomingS
-		}
+		p.DroneStatus[droneID] = incomingS
 	}
 	// Garante que drones só conhecidos localmente também entrem no token
 	for droneID, localS := range b.tokenData.DroneStatus {
@@ -557,9 +669,24 @@ func (b *Broker) receberToken(p TokenPayload) {
 		}
 	}
 
+	// Mescla as chaves públicas dos brokers
+	if p.PublicKeys == nil {
+		p.PublicKeys = make(map[string]string)
+	}
+	for name, pub := range b.tokenData.PublicKeys {
+		if _, exists := p.PublicKeys[name]; !exists {
+			p.PublicKeys[name] = pub
+		}
+	}
+	if _, exists := p.PublicKeys[b.Name]; !exists {
+		p.PublicKeys[b.Name] = hex.EncodeToString(b.publicKey)
+	}
+
 	//Merge do MissionLog: preserva a entrada mais recente entre o log local e o que chegou no token, para nunca perder histórico quando um broker volta ao ar com um log desatualizado.
 	p.MissionLog = mergeMissionLogs(b.tokenData.MissionLog, p.MissionLog)
+
 	b.tokenData = p
+	b.verifyAllRecords()
 
 	go b.tokenLoop()
 }
@@ -708,18 +835,58 @@ process:
 	b.dronesMu.Lock()
 	for droneID, d := range b.drones {
 		globalStatus, hasGlobal := b.tokenData.DroneStatus[droneID]
-		if !hasGlobal || globalStatus != "AVAILABLE" {
+		if !hasGlobal {
 			b.tokenData.DroneStatus[droneID] = d.Status
+		} else if d.Status == "FAILED" && globalStatus != "FAILED" {
+			// Propaga a falha detectada localmente para o token
+			b.tokenData.DroneStatus[droneID] = "FAILED"
+		} else if d.Status == "AVAILABLE" && globalStatus == "IN_MISSION" {
+			// Propaga a conclusão de missão (DRONE_DONE) detectada localmente para o token,
+			// mesmo que este broker não estivesse com o token quando o drone reportou.
+			// Só libera se não houver, no log histórico, uma missão DESPACHADA ainda ativa
+			// para este drone (evita reabrir um drone que já foi redespachado por outro broker).
+			aindaDespachado := false
+			for _, r := range b.tokenData.MissionLog {
+				if r.DroneID == droneID && r.Status == MissionDispatched {
+					aindaDespachado = true
+					break
+				}
+			}
+			if !aindaDespachado {
+				b.tokenData.DroneStatus[droneID] = "AVAILABLE"
+			}
 		}
 	}
 	for droneID, globalStatus := range b.tokenData.DroneStatus {
 		if local, ok := b.drones[droneID]; ok {
-			if local.Status != "FAILED" {
+			if local.Status != "FAILED" || globalStatus == "AVAILABLE" {
 				local.Status = globalStatus
 			}
 		}
 	}
 	b.dronesMu.Unlock()
+
+	// 3.5. Timeout de Missões Ativas (Drones ou Brokers perdidos)
+	for id, r := range b.tokenData.MissionLog {
+		if r.Status == MissionDispatched && r.DispatchedAt != nil && time.Since(*r.DispatchedAt) > 60*time.Second {
+			fmt.Printf("[%s] ⚠️ Missão %s expirou por timeout (60s) — marcando como FALHA\n", b.Name, id)
+			r.Status = MissionFailed
+			now := time.Now()
+			r.FinishedAt = &now
+			r.Result = "timeout"
+			b.signRecord(r) // Assina a transição de timeout
+			delete(b.tokenData.Assigned, id)
+			if r.DroneID != "" {
+				b.tokenData.DroneStatus[r.DroneID] = "AVAILABLE"
+				b.dronesMu.Lock()
+				if d, ok := b.drones[r.DroneID]; ok {
+					d.Status = "AVAILABLE"
+					d.MissionID = ""
+				}
+				b.dronesMu.Unlock()
+			}
+		}
+	}
 
 	// 4. Recupera missões de drones que falharam mantendo o tipo original do alerta
 	for alertID, droneID := range b.tokenData.Assigned {
@@ -766,6 +933,26 @@ process:
 			continue
 		}
 
+		company := "Navegacao" + alert.Sector
+		missionCost := alert.Priority * 10
+
+		// Verifica se a empresa tem saldo suficiente (Saldo no Ledger - Reservas no Token)
+		ledgerBal := b.ledgerQueryBalance(company)
+		if ledgerBal >= 0 {
+			reserved := 0
+			for _, r := range b.tokenData.MissionLog {
+				if r.Company == company && r.Status == MissionDispatched {
+					reserved += r.CostPaid
+				}
+			}
+			if ledgerBal-reserved < missionCost {
+				stillPending = append(stillPending, alert)
+				fmt.Printf("[%s] ❌ Saldo insuficiente para %s (Ledger: %d, Reservado: %d, Custo: %d) — mantendo alerta na fila\n",
+					b.Name, company, ledgerBal, reserved, missionCost)
+				continue
+			}
+		}
+
 		droneID := b.droneDisp(alert.Sector)
 		if droneID == "" {
 			stillPending = append(stillPending, alert)
@@ -780,13 +967,18 @@ process:
 		now := time.Now()
 		droneSnap := droneID
 		alertSnap2 := alert
+		companySnap := company
+		costSnap := missionCost
 		b.logMission(alert.AlertID, func(r *MissionRecord) {
 			r.DroneID = droneSnap
 			r.Sector = alertSnap2.Sector
 			r.AlertType = alertSnap2.AlertType
 			r.Priority = alertSnap2.Priority
+			r.Company = companySnap
+			r.CostPaid = costSnap
 			r.Status = MissionDispatched
 			r.DispatchedAt = &now
+			b.signRecord(r) // ASSINA A RESERVA NO TOKEN!
 		})
 
 		// Se o drone falhar na rede, a transação é revertida localmente de imediato.
@@ -797,35 +989,7 @@ process:
 				d.MissionID = alert.AlertID
 			}
 			b.dronesMu.Unlock()
-			fmt.Printf("[%s] TOKEN → Despacho efetuado com sucesso para o drone %s\n", b.Name, droneID)
-
-			// A empresa pagante é a navegação do setor de ORIGEM do alerta
-			// (ex: alerta do setor "Norte" → "NavegacaoNorte").
-			// Isso é correto: quem solicita a escolta é a empresa do setor ameaçado,
-			// independentemente de qual broker detém o token neste round.
-			company := "Navegacao" + alert.Sector
-
-			// Custo proporcional à prioridade:
-			//   prioridade 1 (médio)   → 10 créditos
-			//   prioridade 2 (alto)    → 20 créditos
-			//   prioridade 3 (crítico) → 30 créditos
-			missionCost := alert.Priority * 10
-
-			// Grava company e custo no log histórico local para auditoria interna
-			companySnap := company
-			costSnap := missionCost
-			b.logMission(alert.AlertID, func(r *MissionRecord) {
-				r.Company  = companySnap
-				r.CostPaid = costSnap
-			})
-
-			// Registra no ledger: (1) débito de créditos e (2) laudo de despacho — ambos assíncronos
-			alertSnap3 := alert
-			droneSnap2 := droneID
-			go func() {
-				b.ledgerChargeEscort(companySnap, alertSnap3.AlertID, costSnap)
-				b.ledgerRecordDispatch(alertSnap3, droneSnap2)
-			}()
+			fmt.Printf("[%s] TOKEN → Despacho efetuado com sucesso para o drone %s. Reserva assinada e registrada.\n", b.Name, droneID)
 		} else {
 			// Reversão imediata em caso de falha de rede física
 			delete(b.tokenData.Assigned, alert.AlertID)
@@ -842,6 +1006,7 @@ process:
 			b.logMission(alert.AlertID, func(r *MissionRecord) {
 				r.Status = MissionFailed
 				r.FinishedAt = &nowFail
+				b.signRecord(r) // ASSINA A TRANSIÇÃO DE FALHA!
 			})
 
 			stillPending = append(stillPending, alert)
@@ -1420,52 +1585,21 @@ func (b *Broker) ledgerSubmitTx(tx LedgerTransaction) bool {
 	return false
 }
 
-// ledgerRecordDispatch registra no ledger o despacho de um drone como laudo imutável.
-// Chamado imediatamente após ledgerChargeEscort para que despacho e pagamento
-// fiquem gravados no mesmo bloco ou em blocos consecutivos.
-func (b *Broker) ledgerRecordDispatch(alert AlertPayload, droneID string) {
+// ledgerSubmitDoneTransaction envia a transação unificada de cobrança definitiva e laudo criptográfico ao ledger
+func (b *Broker) ledgerSubmitDoneTransaction(missionID, droneID, result string) {
 	if len(b.ledgerNodes) == 0 {
 		return
 	}
 
-	company := "Navegacao" + alert.Sector
-	cost    := alert.Priority * 10
-
-	missionDetail, _ := json.Marshal(map[string]interface{}{
-		"mission_id":    alert.AlertID,
-		"sector":        alert.Sector,
-		"alert_type":    alert.AlertType,
-		"priority":      alert.Priority,
-		"drone_id":      droneID,      // qual drone foi solicitado
-		"company":       company,      // quem pagou
-		"cost":          cost,         // quanto pagou
-		"broker":        b.Name,
-		"event":         "DISPATCH",
-		"dispatched_at": time.Now().Format(time.RFC3339), // quando ocorreu
-	})
-
-	tx := LedgerTransaction{
-		TxID:      fmt.Sprintf("dispatch-%s-%s", alert.AlertID, droneID),
-		Type:      LedgerTxMission,
-		From:      company,
-		To:        "SYSTEM",
-		Amount:    0,
-		Payload:   string(missionDetail),
-		Timestamp: time.Now(),
+	b.tokenMu.Lock()
+	record, exists := b.tokenData.MissionLog[missionID]
+	if !exists {
+		record = b.backupTokenData.MissionLog[missionID]
 	}
+	b.tokenMu.Unlock()
 
-	if ok := b.ledgerSubmitTx(tx); ok {
-		fmt.Printf("[%s] ledger: despacho da missão %s registrado | drone=%s empresa=%s custo=%d\n",
-			b.Name, alert.AlertID, droneID, company, cost)
-	} else {
-		fmt.Printf("[%s] ledger: AVISO — despacho %s NÃO registrado no ledger\n", b.Name, alert.AlertID)
-	}
-}
-
-// ledgerRecordDone registra no ledger a conclusão de uma missão com o laudo real do drone.
-// Chamado quando o broker recebe DRONE_DONE.
-func (b *Broker) ledgerRecordDone(droneID, missionID, result string) {
-	if len(b.ledgerNodes) == 0 {
+	if record == nil {
+		fmt.Printf("[%s] ledger done: registro de missão %s não encontrado no log histórico!\n", b.Name, missionID)
 		return
 	}
 
@@ -1473,74 +1607,37 @@ func (b *Broker) ledgerRecordDone(droneID, missionID, result string) {
 		result = "sem_laudo"
 	}
 
-	missionDetail, _ := json.Marshal(map[string]interface{}{
+	// Calcula hash criptográfico do laudo para a integridade na blockchain
+	hasher := sha256.New()
+	hasher.Write([]byte(fmt.Sprintf("%s|%s|%s", missionID, droneID, result)))
+	laudoHash := hex.EncodeToString(hasher.Sum(nil))
+
+	detail, _ := json.Marshal(map[string]interface{}{
 		"mission_id":   missionID,
+		"company":      record.Company,
 		"drone_id":     droneID,
+		"result":       result,
+		"laudo_hash":   laudoHash,
 		"broker":       b.Name,
-		"event":        "COMPLETED",
-		"result":       result, // laudo imutável: "rota_segura", "obstaculo_detectado", etc.
 		"completed_at": time.Now().Format(time.RFC3339),
 	})
 
 	tx := LedgerTransaction{
 		TxID:      fmt.Sprintf("done-%s-%s", missionID, droneID),
-		Type:      LedgerTxMission,
-		From:      droneID,
-		To:        "SYSTEM",
-		Amount:    0,
-		Payload:   string(missionDetail),
-		Timestamp: time.Now(),
-	}
-
-	if ok := b.ledgerSubmitTx(tx); ok {
-		fmt.Printf("[%s] ledger: laudo da missão %s registrado imutavelmente | resultado=%s\n",
-			b.Name, missionID, result)
-	}
-}
-
-// debita créditos da empresa que requisitou a escolta.
-// Registra permanentemente: quem pagou, quanto pagou, qual missão, quando ocorreu.
-func (b *Broker) ledgerChargeEscort(company, missionID string, cost int) bool {
-	if len(b.ledgerNodes) == 0 {
-		return true // sem ledger, permite localmente
-	}
-
-	// Recupera o droneID do log local para incluir no registro permanente
-	b.tokenMu.Lock()
-	droneID := ""
-	if rec, ok := b.tokenData.MissionLog[missionID]; ok {
-		droneID = rec.DroneID
-	}
-	b.tokenMu.Unlock()
-
-	detail, _ := json.Marshal(map[string]interface{}{
-		"mission_id":  missionID,
-		"company":     company,       // quem pagou
-		"amount":      cost,          // quanto pagou
-		"drone_id":    droneID,       // qual drone foi solicitado
-		"broker":      b.Name,        // broker que processou
-		"reason":      "escolta_drone",
-		"charged_at":  time.Now().Format(time.RFC3339), // quando ocorreu
-	})
-
-	tx := LedgerTransaction{
-		TxID:      fmt.Sprintf("charge-%s-%s", missionID, company),
 		Type:      LedgerTxTransfer,
-		From:      company,
-		To:        "SYSTEM", // fundo operacional do consórcio
-		Amount:    cost,
+		From:      record.Company,
+		To:        "SYSTEM",
+		Amount:    record.CostPaid,
 		Payload:   string(detail),
 		Timestamp: time.Now(),
 	}
 
-	if ok := b.ledgerSubmitTx(tx); !ok {
-		fmt.Printf("[%s] ledger: BLOQUEADO — empresa %s sem créditos suficientes para missão %s\n",
-			b.Name, company, missionID)
-		return false
+	if ok := b.ledgerSubmitTx(tx); ok {
+		fmt.Printf("[%s] ledger: Cobrança e Laudo registrados com sucesso! Empresa %s pagou %d créditos. Hash do laudo: %s…\n",
+			b.Name, record.Company, record.CostPaid, laudoHash[:16])
+	} else {
+		fmt.Printf("[%s] ledger: ERRO ao submeter transação unificada da missão %s ao ledger!\n", b.Name, missionID)
 	}
-	fmt.Printf("[%s] ledger: %d créditos debitados de %s | missão=%s | drone=%s\n",
-		b.Name, cost, company, missionID, droneID)
-	return true
 }
 
 // consulta o saldo de uma empresa no ledger distribuído

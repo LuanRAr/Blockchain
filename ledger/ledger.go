@@ -321,6 +321,8 @@ func (n *LedgerNode) minerLoop() {
 		// Aguarda sinal de nova transação ou timer de 10s (para não travar indefinidamente)
 		select {
 		case <-n.mineSignal:
+			// Pequeno delay de coalescência para acumular transações que chegam em rajada
+			time.Sleep(500 * time.Millisecond)
 		case <-time.After(10 * time.Second):
 		}
 
@@ -747,6 +749,23 @@ func resolveListenAddr(remoteAddr string, peers []string) string {
 func (n *LedgerNode) printChainState() {
 	// Chamado com n.mu já mantido pelo chamador
 	head := n.chain[len(n.chain)-1]
+
+	// Verifica se alguma transação no bloco altera saldos (Amount > 0)
+	hasBalanceChange := false
+	for _, tx := range head.Txs {
+		if tx.Amount > 0 {
+			hasBalanceChange = true
+			break
+		}
+	}
+
+	if !hasBalanceChange && head.Index > 0 {
+		// Bloco sem alteração de saldo: imprime apenas um resumo em uma linha
+		fmt.Printf("[%s] 📦 Bloco %d confirmado | hash=%s… | %d txs (sem alteração de saldo)\n",
+			n.ID, head.Index, head.Hash[:16], len(head.Txs))
+		return
+	}
+
 	fmt.Printf("\n[%s] ╔══════════════ LEDGER STATE (bloco=%d) ══════════════╗\n",
 		n.ID, head.Index)
 	fmt.Printf("[%s] ║  HEAD  hash=%s…  txs=%d\n",
