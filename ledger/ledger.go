@@ -1,20 +1,3 @@
-// ledger.go — Nó de Ledger Distribuído para o Sistema Ormuz
-//
-// Implementa uma blockchain simplificada sem frameworks externos:
-//   - Blocos encadeados por hash SHA-256 (prova de integridade)
-//   - Prova de Trabalho (PoW) com dificuldade configurável
-//   - Consenso por maioria simples entre os nós do consórcio
-//   - Gestão de créditos (saldo por empresa) com proteção contra duplo gasto
-//   - Log imutável de laudos de missão
-//   - Comunicação exclusivamente via TCP + JSON (sem frameworks)
-//
-// Variáveis de ambiente:
-//   NODE_ID    — nome/ID deste nó  (ex: "ledger-norte")
-//   PORT       — porta TCP de escuta (padrão: 7000)
-//   PEERS      — lista de outros nós "IP:porta,IP:porta,..."
-//   GENESIS    — se "true", este nó cria o bloco gênese e distribui créditos iniciais
-//   DIFFICULTY — número de zeros iniciais para PoW (padrão: 3)
-
 package main
 
 import (
@@ -30,9 +13,7 @@ import (
 	"time"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Tipos de transação suportados pelo ledger
-// ─────────────────────────────────────────────────────────────────────────────
 
 type TxType string
 
@@ -47,10 +28,7 @@ const (
 	TxMission TxType = "MISSION_REPORT"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Estrutura de uma transação
-// ─────────────────────────────────────────────────────────────────────────────
-
 type Transaction struct {
 	TxID      string    `json:"tx_id"`      // UUID da transação (gerado pelo solicitante)
 	Type      TxType    `json:"type"`       // tipo da transação
@@ -60,11 +38,7 @@ type Transaction struct {
 	Payload   string    `json:"payload"`    // JSON livre: laudo da missão, motivo, etc.
 	Timestamp time.Time `json:"timestamp"`
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Estrutura de um bloco da blockchain
-// ─────────────────────────────────────────────────────────────────────────────
-
 type Block struct {
 	Index     uint64        `json:"index"`      // posição na cadeia (0 = gênese)
 	PrevHash  string        `json:"prev_hash"`  // hash do bloco anterior
@@ -75,10 +49,7 @@ type Block struct {
 	MinedBy   string        `json:"mined_by"`   // ID do nó que minerou o bloco
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Mensagens trocadas entre nós via TCP
-// ─────────────────────────────────────────────────────────────────────────────
-
 type MsgType string
 
 const (
@@ -109,10 +80,7 @@ type Envelope struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Estado do nó
-// ─────────────────────────────────────────────────────────────────────────────
-
 type LedgerNode struct {
 	ID         string   // identificador único deste nó
 	Port       string   // porta TCP de escuta
@@ -149,12 +117,8 @@ func NewLedgerNode(id, port string, peers []string, difficulty int) *LedgerNode 
 	return n
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Hashing e Prova de Trabalho
-// ─────────────────────────────────────────────────────────────────────────────
-
 // blockContent serializa os campos imutáveis do bloco para cálculo de hash.
-// O campo Hash em si é excluído para evitar circularidade.
 func blockContent(b Block) string {
 	txsBytes, _ := json.Marshal(b.Txs)
 	return fmt.Sprintf("%d|%s|%s|%s|%d",
@@ -192,29 +156,26 @@ func mineBlock(b Block, difficulty int) Block {
 
 // validateBlock verifica integridade e PoW de um bloco contra seu predecessor.
 func validateBlock(b, prev Block, difficulty int) bool {
-	// (a) encadeamento correto
+	// encadeamento correto
 	if b.PrevHash != prev.Hash {
 		return false
 	}
-	// (b) índice sequencial
+	// indice sequencial
 	if b.Index != prev.Index+1 {
 		return false
 	}
-	// (c) hash coerente com o conteúdo
+	// hash coerente com o conteúdo
 	if b.Hash != calcHash(b) {
 		return false
 	}
-	// (d) satisfaz prova de trabalho
+	//satisfaz prova de trabalho
 	if !strings.HasPrefix(b.Hash, difficultyPrefix(difficulty)) {
 		return false
 	}
 	return true
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Gênese
-// ─────────────────────────────────────────────────────────────────────────────
-
 // createGenesisBlock cria o bloco 0 da cadeia, emitindo créditos iniciais para
 // as empresas de navegação do consórcio. O bloco gênese tem PrevHash = "0"*64.
 func createGenesisBlock(difficulty int) Block {
@@ -264,9 +225,7 @@ func createGenesisBlock(difficulty int) Block {
 	return mineBlock(genesis, difficulty)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Gestão de balances (aplicada ao receber um novo bloco confirmado)
-// ─────────────────────────────────────────────────────────────────────────────
 
 // applyBlock atualiza o mapa de saldos com as transações do bloco.
 // Chamada APENAS após validação bem-sucedida para manter consistência.
@@ -292,19 +251,15 @@ func (n *LedgerNode) applyBlock(b Block) {
 	n.seenBlocks[b.Hash] = true
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Validação de transação antes de entrar na mempool
-// ─────────────────────────────────────────────────────────────────────────────
 
 // validateTx verifica se a transação pode ser aceita no estado atual:
-//   - Não duplicada
-//   - Saldo suficiente para transferências (proteção contra duplo gasto)
 func (n *LedgerNode) validateTx(tx Transaction) error {
-	// (1) Unicidade: se já processamos este txID, rejeitamos
+	// Unicidade: se já processamos este txID, rejeitamos
 	if n.seenTxs[tx.TxID] {
 		return fmt.Errorf("transação duplicada: %s", tx.TxID)
 	}
-	// (2) Também verifica a mempool atual para evitar duplo gasto na mesma rodada
+	//Também verifica a mempool atual para evitar duplo gasto na mesma rodada
 	pendingSpend := 0
 	for _, pending := range n.mempool {
 		if pending.From == tx.From && pending.Type == TxTransfer {
@@ -312,7 +267,7 @@ func (n *LedgerNode) validateTx(tx Transaction) error {
 		}
 	}
 
-	// (3) Saldo suficiente para transferências
+	//Saldo suficiente para transferências
 	if tx.Type == TxTransfer {
 		available := n.balances[tx.From] - pendingSpend
 		if available < tx.Amount {
@@ -323,10 +278,7 @@ func (n *LedgerNode) validateTx(tx Transaction) error {
 	return nil
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Mineração contínua: empacota mempool em blocos e propaga
-// ─────────────────────────────────────────────────────────────────────────────
-
 // minerLoop fica em espera por sinal de novas txs e, quando há trabalho,
 // monta e minera um bloco novo, depois o propaga para os peers.
 func (n *LedgerNode) minerLoop() {
@@ -334,7 +286,7 @@ func (n *LedgerNode) minerLoop() {
 		// Aguarda sinal de nova transação ou timer de 10s (para não travar indefinidamente)
 		select {
 		case <-n.mineSignal:
-			// Pequeno delay de coalescência para acumular transações que chegam em rajada
+			// Pequeno delay para acumular transações que chegam em rajada
 			time.Sleep(500 * time.Millisecond)
 		case <-time.After(10 * time.Second):
 		}
@@ -402,14 +354,9 @@ func (n *LedgerNode) minerLoop() {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Recepção de bloco vindo de peer
-// ─────────────────────────────────────────────────────────────────────────────
 
 // receiveBlock processa um bloco anunciado por um peer:
-//   - Se já conhecido: ignora
-//   - Se válido e encadeado: adiciona
-//   - Se há gap (peer está adiantado): solicita sincronização completa
 func (n *LedgerNode) receiveBlock(b Block, senderAddr string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -464,10 +411,7 @@ func (n *LedgerNode) removeMempoolTxs(confirmed []Transaction) {
 	n.mempool = filtered
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Sincronização de cadeia (pull da cadeia completa de um peer)
-// ─────────────────────────────────────────────────────────────────────────────
-
 func (n *LedgerNode) requestSync(peerAddr string) {
 	conn, err := net.DialTimeout("tcp", peerAddr, 5*time.Second)
 	if err != nil {
@@ -550,10 +494,7 @@ func (n *LedgerNode) replaceChainIfLonger(incoming []Block, from string) {
 	n.printChainState()
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Broadcast de bloco para todos os peers
-// ─────────────────────────────────────────────────────────────────────────────
-
 func (n *LedgerNode) broadcastBlock(b Block) {
 	payload, _ := json.Marshal(b)
 	env := Envelope{Type: MsgNewBlock, Payload: payload}
@@ -582,10 +523,7 @@ func (n *LedgerNode) broadcastBlock(b Block) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Ping periódico para manter mapa de liveness
-// ─────────────────────────────────────────────────────────────────────────────
-
 func (n *LedgerNode) peerHeartbeats() {
 	ticker := time.NewTicker(8 * time.Second)
 	defer ticker.Stop()
@@ -618,10 +556,7 @@ func (n *LedgerNode) peerHeartbeats() {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Servidor TCP: recebe conexões de brokers e de outros nós
-// ─────────────────────────────────────────────────────────────────────────────
-
 func (n *LedgerNode) serve() {
 	ln, err := net.Listen("tcp", ":"+n.Port)
 	if err != nil {
@@ -746,7 +681,7 @@ func (n *LedgerNode) handleConn(conn net.Conn) {
 	}
 }
 
-// resolveListenAddr tenta mapear o endereço de conexão de origem (IP:portaEfêmera)
+// resolveListenAddr tenta mapear o endereço de conexão de origem 
 // para o endereço de escuta configurado (IP:portaFixa) do peer.
 func resolveListenAddr(remoteAddr string, peers []string) string {
 	// Extrai só o IP da conexão de origem
@@ -766,10 +701,7 @@ func resolveListenAddr(remoteAddr string, peers []string) string {
 	return ""
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Exibição de estado
-// ─────────────────────────────────────────────────────────────────────────────
-
 func (n *LedgerNode) printChainState() {
 	// Chamado com n.mu já mantido pelo chamador
 	head := n.chain[len(n.chain)-1]
@@ -801,10 +733,7 @@ func (n *LedgerNode) printChainState() {
 	fmt.Printf("[%s] ╚══════════════════════════════════════════════════════╝\n\n", n.ID)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Geração de ID de transação único
-// ─────────────────────────────────────────────────────────────────────────────
-
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func newTxID() string {
@@ -813,10 +742,7 @@ func newTxID() string {
 	return hex.EncodeToString(b)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // main
-// ─────────────────────────────────────────────────────────────────────────────
-
 func main() {
 	nodeID     := os.Getenv("NODE_ID")
 	port       := os.Getenv("PORT")

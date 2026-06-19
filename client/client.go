@@ -1,13 +1,3 @@
-// client.go — CLI Interativa para Companhias do Consórcio Ormuz
-//
-// Representa uma "Companhia" com menu interativo no terminal.
-// Comunica-se diretamente com o Ledger (TCP) e os Brokers (TCP).
-//
-// Variáveis de ambiente:
-//   COMPANY      — nome da companhia (ex: "NavegacaoNorte")
-//   LEDGER_NODES — lista "IP:porta,..." dos nós do ledger
-//   BROKER_LIST  — lista "IP:porta,..." dos brokers
-
 package main
 
 import (
@@ -23,10 +13,7 @@ import (
 	"time"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tipos espelhados do ledger (sem importar pacotes internos)
-// ─────────────────────────────────────────────────────────────────────────────
-
+// Tipos espelhados do ledger 
 type TxType string
 
 const (
@@ -69,9 +56,7 @@ type LedgerEnvelope struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Tipos espelhados do broker (para envio de alerta)
-// ─────────────────────────────────────────────────────────────────────────────
 
 type BrokerMsgType string
 
@@ -92,10 +77,7 @@ type AlertPayload struct {
 	Priority  int       `json:"priority"`
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Estrutura do payload de laudo gravado pelo broker no ledger
-// ─────────────────────────────────────────────────────────────────────────────
-
 type LaudoPayload struct {
 	MissionID   string `json:"mission_id"`
 	Company     string `json:"company"`
@@ -168,9 +150,7 @@ func (c *Client) queryBalance(company string) (int, error) {
 	return int(bal), nil
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // 2. Baixar a blockchain completa
-// ─────────────────────────────────────────────────────────────────────────────
 
 func (c *Client) fetchChain() ([]Block, error) {
 	conn, err := c.dialLedger()
@@ -198,10 +178,7 @@ func (c *Client) fetchChain() ([]Block, error) {
 	return chain, nil
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 3. Requisitar escolta (envia ALERT ao broker)
-// ─────────────────────────────────────────────────────────────────────────────
-
+//Requisitar escolta (envia ALERT ao broker)
 func (c *Client) requestEscort(sector, alertType string, priority int) error {
 	company     := "Navegacao" + sector
 	missionCost := priority * 10
@@ -253,9 +230,7 @@ func (c *Client) requestEscort(sector, alertType string, priority int) error {
 	return fmt.Errorf("nenhum broker acessível em %v", c.BrokerList)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Menus de auditoria
-// ─────────────────────────────────────────────────────────────────────────────
 
 func (c *Client) menuConsultarSaldos(scanner *bufio.Scanner) {
 	fmt.Println("\n  Qual empresa deseja consultar?")

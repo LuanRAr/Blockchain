@@ -1,25 +1,3 @@
-# docker-compose para rodar TUDO em uma única máquina (teste local).
-#
-# Usa rede bridge com IPs fixos (subnet 10.200.0.0/24).
-# Cada serviço pode ser subido individualmente:
-#
-#   docker compose up --build broker-norte
-#   docker compose up --build ledger-norte ledger-sul
-#   docker compose up --build sensor-norte-radar drone-norte-01
-#
-# Ou tudo de uma vez:
-#   docker compose up --build
-#
-# Mapa de IPs internos:
-#   Ledger : norte 10.200.0.7  | sul 10.200.0.8  | leste 10.200.0.11 | oeste 10.200.0.12
-#   Broker : norte 10.200.0.17 | sul 10.200.0.18 | leste 10.200.0.21 | oeste 10.200.0.22
-#   Drone  : norte-01 .31, norte-02 .32 | sul-01 .33, sul-02 .34
-#            leste-01 .35, leste-02 .36 | oeste-01 .37, oeste-02 .38
-#
-# Portas expostas no host:
-#   Ledger : 7007 (norte) | 7008 (sul) | 7011 (leste) | 7012 (oeste)
-#   Broker : 5007 (norte) | 5008 (sul) | 5011 (leste) | 5012 (oeste)
-
 networks:
   ormuz:
     driver: bridge
@@ -48,7 +26,7 @@ services:
       - PORT=7000
       - GENESIS=true
       - DIFFICULTY=3
-      - PEERS=10.200.0.8:7000,10.200.0.11:7000,10.200.0.12:7000
+      - PEERS=10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
 
   ledger-sul:
     build:
@@ -67,7 +45,7 @@ services:
       - PORT=7000
       - GENESIS=false
       - DIFFICULTY=3
-      - PEERS=10.200.0.7:7000,10.200.0.11:7000,10.200.0.12:7000
+      - PEERS=10.200.0.7:7000,10.200.0.10:7000,10.200.0.16:7000
 
   ledger-leste:
     build:
@@ -77,16 +55,16 @@ services:
     container_name: ledger_leste
     networks:
       ormuz:
-        ipv4_address: 10.200.0.11
+        ipv4_address: 10.200.0.10
     restart: unless-stopped
     ports:
-      - "7011:7000"
+      - "7010:7000"
     environment:
       - NODE_ID=ledger-leste
       - PORT=7000
       - GENESIS=false
       - DIFFICULTY=3
-      - PEERS=10.200.0.7:7000,10.200.0.8:7000,10.200.0.12:7000
+      - PEERS=10.200.0.7:7000,10.200.0.8:7000,10.200.0.16:7000
 
   ledger-oeste:
     build:
@@ -96,16 +74,16 @@ services:
     container_name: ledger_oeste
     networks:
       ormuz:
-        ipv4_address: 10.200.0.12
+        ipv4_address: 10.200.0.16
     restart: unless-stopped
     ports:
-      - "7012:7000"
+      - "7016:7000"
     environment:
       - NODE_ID=ledger-oeste
       - PORT=7000
       - GENESIS=false
       - DIFFICULTY=3
-      - PEERS=10.200.0.7:7000,10.200.0.8:7000,10.200.0.11:7000
+      - PEERS=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000
 
   # ─── Brokers ─────────────────────────────────────────────────────────────────
 
@@ -125,8 +103,8 @@ services:
       - SECTOR_NAME=Norte
       - PORT=5000
       - MY_IP=10.200.0.17
-      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.11:7000,10.200.0.12:7000
+      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
 
   broker-sul:
     build:
@@ -144,8 +122,8 @@ services:
       - SECTOR_NAME=Sul
       - PORT=5000
       - MY_IP=10.200.0.18
-      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.11:7000,10.200.0.12:7000
+      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
 
   broker-leste:
     build:
@@ -155,16 +133,16 @@ services:
     container_name: broker_leste
     networks:
       ormuz:
-        ipv4_address: 10.200.0.21
+        ipv4_address: 10.200.0.20
     restart: unless-stopped
     ports:
-      - "5011:5000"
+      - "5010:5000"
     environment:
       - SECTOR_NAME=Leste
       - PORT=5000
-      - MY_IP=10.200.0.21
-      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.11:7000,10.200.0.12:7000
+      - MY_IP=10.200.0.20
+      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
 
   broker-oeste:
     build:
@@ -174,16 +152,16 @@ services:
     container_name: broker_oeste
     networks:
       ormuz:
-        ipv4_address: 10.200.0.22
+        ipv4_address: 10.200.0.26
     restart: unless-stopped
     ports:
-      - "5012:5000"
+      - "5016:5000"
     environment:
       - SECTOR_NAME=Oeste
       - PORT=5000
-      - MY_IP=10.200.0.22
-      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.11:7000,10.200.0.12:7000
+      - MY_IP=10.200.0.26
+      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
 
   # ─── Sensores ────────────────────────────────────────────────────────────────
 
@@ -199,7 +177,7 @@ services:
     environment:
       - SECTOR_NAME=Norte
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   sensor-norte-naval:
     build:
@@ -213,7 +191,7 @@ services:
     environment:
       - SECTOR_NAME=Norte
       - SENSOR_TYPE=Naval
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   sensor-sul-radar:
     build:
@@ -227,7 +205,7 @@ services:
     environment:
       - SECTOR_NAME=Sul
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   sensor-sul-naval:
     build:
@@ -241,7 +219,7 @@ services:
     environment:
       - SECTOR_NAME=Sul
       - SENSOR_TYPE=Naval
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   sensor-leste-radar:
     build:
@@ -255,7 +233,7 @@ services:
     environment:
       - SECTOR_NAME=Leste
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   sensor-leste-naval:
     build:
@@ -269,7 +247,7 @@ services:
     environment:
       - SECTOR_NAME=Leste
       - SENSOR_TYPE=Naval
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   sensor-oeste-radar:
     build:
@@ -283,7 +261,7 @@ services:
     environment:
       - SECTOR_NAME=Oeste
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   sensor-oeste-naval:
     build:
@@ -297,7 +275,7 @@ services:
     environment:
       - SECTOR_NAME=Oeste
       - SENSOR_TYPE=Naval
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   # ─── Drones ──────────────────────────────────────────────────────────────────
 
@@ -316,7 +294,7 @@ services:
       - DRONE_ID=DRONE-NORTE-A
       - DRONE_PORT=6000
       - MY_IP=10.200.0.31
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   drone-norte-02:
     build:
@@ -333,7 +311,7 @@ services:
       - DRONE_ID=DRONE-NORTE-B
       - DRONE_PORT=6000
       - MY_IP=10.200.0.32
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   drone-sul-01:
     build:
@@ -350,7 +328,7 @@ services:
       - DRONE_ID=DRONE-SUL-A
       - DRONE_PORT=6000
       - MY_IP=10.200.0.33
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   drone-sul-02:
     build:
@@ -367,7 +345,7 @@ services:
       - DRONE_ID=DRONE-SUL-B
       - DRONE_PORT=6000
       - MY_IP=10.200.0.34
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   drone-leste-01:
     build:
@@ -384,7 +362,7 @@ services:
       - DRONE_ID=DRONE-LESTE-A
       - DRONE_PORT=6000
       - MY_IP=10.200.0.35
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   drone-leste-02:
     build:
@@ -401,7 +379,7 @@ services:
       - DRONE_ID=DRONE-LESTE-B
       - DRONE_PORT=6000
       - MY_IP=10.200.0.36
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   drone-oeste-01:
     build:
@@ -418,7 +396,7 @@ services:
       - DRONE_ID=DRONE-OESTE-A
       - DRONE_PORT=6000
       - MY_IP=10.200.0.37
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   drone-oeste-02:
     build:
@@ -435,7 +413,7 @@ services:
       - DRONE_ID=DRONE-OESTE-B
       - DRONE_PORT=6000
       - MY_IP=10.200.0.38
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
 
   # ─── Cliente Interativo ───────────────────────────────────────────────────
 
@@ -450,8 +428,7 @@ services:
     stdin_open: true  # mantém stdin aberto para o menu interativo
     tty: true         # aloca pseudo-TTY para formatação correta do terminal
     environment:
-      # Troque COMPANY para operar como outra empresa do consórcio:
       #   NavegacaoNorte | NavegacaoSul | NavegacaoLeste | NavegacaoOeste | ConsorcioGeral
       - COMPANY=NavegacaoNorte
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.11:7000,10.200.0.12:7000
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000

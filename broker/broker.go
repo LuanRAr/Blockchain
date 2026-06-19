@@ -1601,7 +1601,7 @@ func (b *Broker) ledgerSubmitTx(tx LedgerTransaction) bool {
 	return false
 }
 
-// ledgerSubmitDoneTransaction envia a transação unificada de cobrança definitiva e laudo criptográfico ao ledger
+// envia a transação unificada de cobrança definitiva e laudo criptográfico ao ledger
 func (b *Broker) ledgerSubmitDoneTransaction(missionID, droneID, result string) {
 	if len(b.ledgerNodes) == 0 {
 		return
