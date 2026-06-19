@@ -1,10 +1,3 @@
-networks:
-  ormuz:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.200.0.0/24
-
 services:
 
   # ─── Ledger ─────────────────────────────────────────────────────────────────
@@ -15,18 +8,14 @@ services:
       args:
         TARGET: ledger
     container_name: ledger_norte
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.7
+    network_mode: host
     restart: unless-stopped
-    ports:
-      - "7007:7000"
     environment:
       - NODE_ID=ledger-norte
       - PORT=7000
       - GENESIS=true
       - DIFFICULTY=3
-      - PEERS=10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
+      - PEERS=172.16.201.10:7000,172.16.201.11:7000,172.16.201.12:7000
 
   ledger-sul:
     build:
@@ -34,18 +23,14 @@ services:
       args:
         TARGET: ledger
     container_name: ledger_sul
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.8
+    network_mode: host
     restart: unless-stopped
-    ports:
-      - "7008:7000"
     environment:
       - NODE_ID=ledger-sul
       - PORT=7000
       - GENESIS=false
       - DIFFICULTY=3
-      - PEERS=10.200.0.7:7000,10.200.0.10:7000,10.200.0.16:7000
+      - PEERS=172.16.201.7:7000,172.16.201.11:7000,172.16.201.12:7000
 
   ledger-leste:
     build:
@@ -53,18 +38,14 @@ services:
       args:
         TARGET: ledger
     container_name: ledger_leste
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.10
+    network_mode: host
     restart: unless-stopped
-    ports:
-      - "7010:7000"
     environment:
       - NODE_ID=ledger-leste
       - PORT=7000
       - GENESIS=false
       - DIFFICULTY=3
-      - PEERS=10.200.0.7:7000,10.200.0.8:7000,10.200.0.16:7000
+      - PEERS=172.16.201.7:7000,172.16.201.10:7000,172.16.201.12:7000
 
   ledger-oeste:
     build:
@@ -72,20 +53,16 @@ services:
       args:
         TARGET: ledger
     container_name: ledger_oeste
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.16
+    network_mode: host
     restart: unless-stopped
-    ports:
-      - "7016:7000"
     environment:
       - NODE_ID=ledger-oeste
       - PORT=7000
       - GENESIS=false
       - DIFFICULTY=3
-      - PEERS=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000
+      - PEERS=172.16.201.7:7000,172.16.201.10:7000,172.16.201.11:7000
 
-  # ─── Brokers ─────────────────────────────────────────────────────────────────
+  # ─── Brokers ────────────────────────────────────────────────────────────────
 
   broker-norte:
     build:
@@ -93,18 +70,14 @@ services:
       args:
         TARGET: broker
     container_name: broker_norte
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.17
+    network_mode: host
     restart: unless-stopped
-    ports:
-      - "5007:5000"
     environment:
       - SECTOR_NAME=Norte
       - PORT=5000
-      - MY_IP=10.200.0.17
-      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
+      - MY_IP=172.16.201.7
+      - RING_ADDRS=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
+      - LEDGER_NODES=172.16.201.7:7000,172.16.201.10:7000,172.16.201.11:7000,172.16.201.12:7000
 
   broker-sul:
     build:
@@ -112,18 +85,14 @@ services:
       args:
         TARGET: broker
     container_name: broker_sul
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.18
+    network_mode: host
     restart: unless-stopped
-    ports:
-      - "5008:5000"
     environment:
       - SECTOR_NAME=Sul
       - PORT=5000
-      - MY_IP=10.200.0.18
-      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
+      - MY_IP=172.16.201.10
+      - RING_ADDRS=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
+      - LEDGER_NODES=172.16.201.7:7000,172.16.201.10:7000,172.16.201.11:7000,172.16.201.12:7000
 
   broker-leste:
     build:
@@ -131,39 +100,31 @@ services:
       args:
         TARGET: broker
     container_name: broker_leste
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.20
+    network_mode: host
     restart: unless-stopped
-    ports:
-      - "5010:5000"
     environment:
       - SECTOR_NAME=Leste
       - PORT=5000
-      - MY_IP=10.200.0.20
-      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
-
+      - MY_IP=172.16.201.11
+      - RING_ADDRS=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
+      - LEDGER_NODES=172.16.201.7:7000,172.16.201.10:7000,172.16.201.11:7000,172.16.201.12:7000
+    
   broker-oeste:
     build:
       context: .
       args:
         TARGET: broker
     container_name: broker_oeste
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.26
+    network_mode: host
     restart: unless-stopped
-    ports:
-      - "5016:5000"
     environment:
       - SECTOR_NAME=Oeste
       - PORT=5000
-      - MY_IP=10.200.0.26
-      - RING_ADDRS=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
+      - MY_IP=172.16.201.12
+      - RING_ADDRS=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
+      - LEDGER_NODES=172.16.201.7:7000,172.16.201.10:7000,172.16.201.11:7000,172.16.201.12:7000
 
-  # ─── Sensores ────────────────────────────────────────────────────────────────
+  # ─── Sensores ───────────────────────────────────────────────────────────────
 
   sensor-norte-radar:
     build:
@@ -171,13 +132,12 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_norte_radar
-    networks:
-      - ormuz
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   sensor-norte-naval:
     build:
@@ -185,13 +145,12 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_norte_naval
-    networks:
-      - ormuz
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - SENSOR_TYPE=Naval
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   sensor-sul-radar:
     build:
@@ -199,13 +158,12 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_sul_radar
-    networks:
-      - ormuz
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   sensor-sul-naval:
     build:
@@ -213,13 +171,12 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_sul_naval
-    networks:
-      - ormuz
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - SENSOR_TYPE=Naval
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   sensor-leste-radar:
     build:
@@ -227,13 +184,12 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_leste_radar
-    networks:
-      - ormuz
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Leste
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   sensor-leste-naval:
     build:
@@ -241,13 +197,12 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_leste_naval
-    networks:
-      - ormuz
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Leste
       - SENSOR_TYPE=Naval
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   sensor-oeste-radar:
     build:
@@ -255,13 +210,12 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_oeste_radar
-    networks:
-      - ormuz
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Oeste
       - SENSOR_TYPE=Radar
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   sensor-oeste-naval:
     build:
@@ -269,15 +223,14 @@ services:
       args:
         TARGET: sensor
     container_name: sensor_oeste_naval
-    networks:
-      - ormuz
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Oeste
       - SENSOR_TYPE=Naval
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
-  # ─── Drones ──────────────────────────────────────────────────────────────────
+  # ─── Drones ─────────────────────────────────────────────────────────────────
 
   drone-norte-01:
     build:
@@ -285,16 +238,14 @@ services:
       args:
         TARGET: drone
     container_name: drone_norte_01
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.31
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - DRONE_ID=DRONE-NORTE-A
       - DRONE_PORT=6000
-      - MY_IP=10.200.0.31
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - MY_IP=172.16.201.7
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-norte-02:
     build:
@@ -302,16 +253,14 @@ services:
       args:
         TARGET: drone
     container_name: drone_norte_02
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.32
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Norte
       - DRONE_ID=DRONE-NORTE-B
-      - DRONE_PORT=6000
-      - MY_IP=10.200.0.32
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - DRONE_PORT=6001
+      - MY_IP=172.16.201.7
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-sul-01:
     build:
@@ -319,16 +268,14 @@ services:
       args:
         TARGET: drone
     container_name: drone_sul_01
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.33
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - DRONE_ID=DRONE-SUL-A
-      - DRONE_PORT=6000
-      - MY_IP=10.200.0.33
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - DRONE_PORT=6002
+      - MY_IP=172.16.201.10
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-sul-02:
     build:
@@ -336,33 +283,29 @@ services:
       args:
         TARGET: drone
     container_name: drone_sul_02
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.34
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Sul
       - DRONE_ID=DRONE-SUL-B
-      - DRONE_PORT=6000
-      - MY_IP=10.200.0.34
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
-
+      - DRONE_PORT=6003
+      - MY_IP=172.16.201.10
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
+  
   drone-leste-01:
     build:
       context: .
       args:
         TARGET: drone
     container_name: drone_leste_01
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.35
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Leste
       - DRONE_ID=DRONE-LESTE-A
-      - DRONE_PORT=6000
-      - MY_IP=10.200.0.35
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - DRONE_PORT=6004
+      - MY_IP=172.16.201.11
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-leste-02:
     build:
@@ -370,16 +313,14 @@ services:
       args:
         TARGET: drone
     container_name: drone_leste_02
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.36
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Leste
       - DRONE_ID=DRONE-LESTE-B
-      - DRONE_PORT=6000
-      - MY_IP=10.200.0.36
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - DRONE_PORT=6005
+      - MY_IP=172.16.201.11
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-oeste-01:
     build:
@@ -387,16 +328,14 @@ services:
       args:
         TARGET: drone
     container_name: drone_oeste_01
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.37
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Oeste
       - DRONE_ID=DRONE-OESTE-A
-      - DRONE_PORT=6000
-      - MY_IP=10.200.0.37
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - DRONE_PORT=6006
+      - MY_IP=172.16.201.12
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
   drone-oeste-02:
     build:
@@ -404,18 +343,16 @@ services:
       args:
         TARGET: drone
     container_name: drone_oeste_02
-    networks:
-      ormuz:
-        ipv4_address: 10.200.0.38
+    network_mode: host
     restart: unless-stopped
     environment:
       - SECTOR_NAME=Oeste
       - DRONE_ID=DRONE-OESTE-B
-      - DRONE_PORT=6000
-      - MY_IP=10.200.0.38
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - DRONE_PORT=6007
+      - MY_IP=172.16.201.12
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
 
-  # ─── Cliente Interativo ───────────────────────────────────────────────────
+  # ─── Cliente Interativo ─────────────────────────────────────────────────────
 
   client:
     build:
@@ -423,12 +360,11 @@ services:
       args:
         TARGET: client
     container_name: ormuz_client
-    networks:
-      - ormuz
+    network_mode: host
     stdin_open: true  # mantém stdin aberto para o menu interativo
     tty: true         # aloca pseudo-TTY para formatação correta do terminal
     environment:
       #   NavegacaoNorte | NavegacaoSul | NavegacaoLeste | NavegacaoOeste | ConsorcioGeral
       - COMPANY=NavegacaoNorte
-      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.10:7000,10.200.0.16:7000
-      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.20:5000,10.200.0.26:5000
+      - LEDGER_NODES=172.16.201.7:7000,172.16.201.10:7000,172.16.201.11:7000,172.16.201.12:7000
+      - BROKER_LIST=172.16.201.7:5000,172.16.201.10:5000,172.16.201.11:5000,172.16.201.12:5000
