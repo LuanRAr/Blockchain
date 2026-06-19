@@ -436,3 +436,22 @@ services:
       - DRONE_PORT=6000
       - MY_IP=10.200.0.38
       - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
+
+  # ─── Cliente Interativo ───────────────────────────────────────────────────
+
+  client:
+    build:
+      context: .
+      args:
+        TARGET: client
+    container_name: ormuz_client
+    networks:
+      - ormuz
+    stdin_open: true  # mantém stdin aberto para o menu interativo
+    tty: true         # aloca pseudo-TTY para formatação correta do terminal
+    environment:
+      # Troque COMPANY para operar como outra empresa do consórcio:
+      #   NavegacaoNorte | NavegacaoSul | NavegacaoLeste | NavegacaoOeste | ConsorcioGeral
+      - COMPANY=NavegacaoNorte
+      - LEDGER_NODES=10.200.0.7:7000,10.200.0.8:7000,10.200.0.11:7000,10.200.0.12:7000
+      - BROKER_LIST=10.200.0.17:5000,10.200.0.18:5000,10.200.0.21:5000,10.200.0.22:5000
