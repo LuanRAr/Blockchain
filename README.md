@@ -74,18 +74,13 @@ Sensores / Cliente  →  Broker (Token Ring)  →  Drones
 
 ```
 ormuz/
-├── broker/
-│   └── broker.go          # Broker com Token Ring, fila de alertas, despacho de drones, assinatura Ed25519 e integração com ledger
-├── sensor/
-│   └── sensor.go          # Sensor virtual com geração de alertas e fallback TCP
-├── drone/
-│   └── drone.go           # Drone com servidor TCP, heartbeat, loop de missão e laudo probabilístico
-├── ledger/
-│   └── ledger.go          # Nó blockchain com PoW, mempool, sincronização e consulta de saldo
-├── client/
-│   └── client.go          # Console interativo: saldo, escolta, transações e laudos
+├── broker.go              # Broker com Token Ring, fila de alertas, despacho de drones, assinatura Ed25519 e integração com ledger
+├── sensor.go              # Sensor virtual com geração de alertas e fallback TCP
+├── drone.go               # Drone com servidor TCP, heartbeat, loop de missão e laudo probabilístico
+├── ledger.go              # Nó blockchain com PoW, mempool, sincronização e consulta de saldo
+├── client.go              # Console interativo: saldo, escolta, transações e laudos
 ├── go.mod                 # Módulo Go (ormuz, go 1.22)
-├── dockerfile             # Build multi-stage: builder Alpine + runtime mínimo
+├── dockerfile             # Build multi-stage: builder Alpine + runtime mínimo (TARGET seleciona o binário)
 └── docker-compose.yaml    # 4 ledgers + 4 brokers + 8 sensores + 8 drones + 1 cliente
 ```
 
@@ -93,11 +88,19 @@ ormuz/
 
 ## 🔌 Portas e Protocolo
 
-| Componente | Porta          | Protocolo | Direção                              |
-|------------|----------------|-----------|--------------------------------------|
-| Broker     | `5000`         | TCP       | sensores / drones / peers → broker   |
-| Drone      | `6000`         | TCP       | broker → drone (`DRONE_DISPATCH`)    |
-| Ledger     | `7000`         | TCP       | brokers / clientes / peers → ledger  |
+As portas internas utilizadas na comunicação dentro da rede Docker, bem como as portas mapeadas no host (conforme o `docker-compose.yaml`), são estruturadas da seguinte forma:
+
+| Componente | Porta Interna (Docker) | Porta Host Mapeada | Protocolo | Direção |
+| :--- | :--- | :--- | :--- | :--- |
+| **Ledger (Norte)** | `7000` | `7007` | TCP | brokers / clientes / peers → ledger |
+| **Ledger (Sul)** | `7000` | `7008` | TCP | brokers / clientes / peers → ledger |
+| **Ledger (Leste)** | `7000` | `7010` | TCP | brokers / clientes / peers → ledger |
+| **Ledger (Oeste)** | `7000` | `7016` | TCP | brokers / clientes / peers → ledger |
+| **Broker (Norte)** | `5000` | `5007` | TCP | sensores / drones / peers → broker |
+| **Broker (Sul)** | `5000` | `5008` | TCP | sensores / drones / peers → broker |
+| **Broker (Leste)** | `5000` | `5010` | TCP | sensores / drones / peers → broker |
+| **Broker (Oeste)** | `5000` | `5016` | TCP | sensores / drones / peers → broker |
+| **Drone** | `6000` | — | TCP | broker → drone (`DRONE_DISPATCH`) |
 
 Todas as mensagens trafegam como JSON delimitado por newline (`json.Encoder`).
 
@@ -147,8 +150,8 @@ docker compose up --build -d
 ```
 
 Isso inicializa:
-- **4 nós de ledger** (Norte, Sul, Leste, Oeste) em `10.200.0.7/8/10/16:7000`
-- **4 brokers** (Norte, Sul, Leste, Oeste) em `10.200.0.17/18/20/26:5000`
+- **4 nós de ledger** (Norte, Sul, Leste, Oeste) nos IPs internos `10.200.0.7/8/10/16:7000` (mapeados no host em `localhost:7007/7008/7010/7016`)
+- **4 brokers** (Norte, Sul, Leste, Oeste) nos IPs internos `10.200.0.17/18/20/26:5000` (mapeados no host em `localhost:5007/5008/5010/5016`)
 - **8 sensores** (Radar e Naval por setor)
 - **8 drones** (dois por setor)
 
@@ -157,10 +160,10 @@ Isso inicializa:
 
 ### 2. Abrir o cliente interativo
 
-O cliente precisa de um terminal interativo (stdin + TTY). Em um **novo terminal**, execute:
+O serviço `client` já sobe junto com o `docker compose up` (configurado com `stdin_open: true` e `tty: true`). Para abrir o console interativo, anexe ao container em execução:
 
 ```bash
-docker compose run --rm -it client
+docker attach ormuz_client
 ```
 
 Isso abre o console da empresa configurada em `COMPANY` (padrão: `NavegacaoNorte`):
@@ -181,7 +184,7 @@ Isso abre o console da empresa configurada em `COMPANY` (padrão: `NavegacaoNort
   ╚══════════════════════════════════════════════════════════════════╝
 ```
 
-Para abrir um cliente de **outra empresa**, sobrescreva a variável `COMPANY`:
+Para iniciar um cliente de **outra empresa**, sobrescreva a variável `COMPANY` ao subir a stack (antes do `up`), ou suba um container avulso:
 
 ```bash
 docker compose run --rm -it -e COMPANY=NavegacaoSul client
