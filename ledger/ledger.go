@@ -217,7 +217,7 @@ func validateBlock(b, prev Block, difficulty int) bool {
 
 // createGenesisBlock cria o bloco 0 da cadeia, emitindo créditos iniciais para
 // as empresas de navegação do consórcio. O bloco gênese tem PrevHash = "0"*64.
-func createGenesisBlock(nodeID string, difficulty int) Block {
+func createGenesisBlock(difficulty int) Block {
 	// Empresas iniciais do consórcio com saldo de arranque
 	initialBalances := map[string]int{
 		"NavegacaoNorte":  1000,
@@ -227,8 +227,21 @@ func createGenesisBlock(nodeID string, difficulty int) Block {
 		"ConsorcioGeral":  5000,
 	}
 
+	// Data de criação determinística do bloco gênese
+	genesisTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Ordenação determinística das transações gênese para manter consistência de hash
+	companies := []string{
+		"ConsorcioGeral",
+		"NavegacaoLeste",
+		"NavegacaoNorte",
+		"NavegacaoOeste",
+		"NavegacaoSul",
+	}
+
 	var txs []Transaction
-	for company, amount := range initialBalances {
+	for _, company := range companies {
+		amount := initialBalances[company]
 		txs = append(txs, Transaction{
 			TxID:      fmt.Sprintf("genesis-%s", company),
 			Type:      TxCredit,
@@ -236,16 +249,16 @@ func createGenesisBlock(nodeID string, difficulty int) Block {
 			To:        company,
 			Amount:    amount,
 			Payload:   `{"reason":"distribuição_inicial"}`,
-			Timestamp: time.Now(),
+			Timestamp: genesisTime,
 		})
 	}
 
 	genesis := Block{
 		Index:     0,
 		PrevHash:  strings.Repeat("0", 64), // convencional para o bloco gênese
-		Timestamp: time.Now(),
+		Timestamp: genesisTime,
 		Txs:       txs,
-		MinedBy:   nodeID,
+		MinedBy:   "SYSTEM",
 	}
 	// O bloco gênese também passa por PoW para manter consistência de validação
 	return mineBlock(genesis, difficulty)
@@ -501,6 +514,17 @@ func (n *LedgerNode) replaceChainIfLonger(incoming []Block, from string) {
 
 	if !localIsPlaceholder && len(incoming) <= len(n.chain) {
 		return // não é mais longa e não é placeholder: ignora
+	}
+
+	if len(incoming) == 0 {
+		return
+	}
+
+	// Valida se a raiz da cadeia recebida é idêntica à raiz local (evita bifurcações/Split-Brain de origens diferentes)
+	if !localIsPlaceholder && incoming[0].Hash != n.chain[0].Hash {
+		fmt.Printf("[%s] sync: cadeia recebida de %s REJEITADA por divergência no bloco gênese (local=%s, recebida=%s)\n",
+			n.ID, from, n.chain[0].Hash[:16], incoming[0].Hash[:16])
+		return
 	}
 
 	// Valida a cadeia recebida completa do bloco 1 em diante
@@ -815,7 +839,7 @@ func main() {
 	if isGenesis {
 		// Este nó cria a cadeia do zero com o bloco gênese
 		fmt.Printf("[%s] 🌱 gerando bloco gênese (dificuldade=%d)…\n", nodeID, difficulty)
-		genesis := createGenesisBlock(nodeID, difficulty)
+		genesis := createGenesisBlock(difficulty)
 		node.mu.Lock()
 		node.chain = []Block{genesis}
 		node.applyBlock(genesis)
@@ -840,8 +864,8 @@ func main() {
 	go node.peerHeartbeats()
 	go node.minerLoop()
 
-	// Se não for gênese, tenta sincronizar com peers após startup
-	if !isGenesis && len(peers) > 0 {
+	// Tenta sincronizar com peers após startup para herdar uma cadeia existente mais longa (independente de ser gênese ou não)
+	if len(peers) > 0 {
 		go func() {
 			time.Sleep(3 * time.Second) // aguarda peers subirem
 			for _, peer := range peers {

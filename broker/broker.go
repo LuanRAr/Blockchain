@@ -678,9 +678,8 @@ func (b *Broker) receberToken(p TokenPayload) {
 			p.PublicKeys[name] = pub
 		}
 	}
-	if _, exists := p.PublicKeys[b.Name]; !exists {
-		p.PublicKeys[b.Name] = hex.EncodeToString(b.publicKey)
-	}
+	p.PublicKeys[b.Name] = hex.EncodeToString(b.publicKey)
+
 
 	//Merge do MissionLog: preserva a entrada mais recente entre o log local e o que chegou no token, para nunca perder histórico quando um broker volta ao ar com um log desatualizado.
 	p.MissionLog = mergeMissionLogs(b.tokenData.MissionLog, p.MissionLog)
@@ -791,7 +790,13 @@ process:
 	// Bloqueio atómico unificado para todo o ciclo de processamento do Token
 	b.tokenMu.Lock()
 
+	if b.tokenData.PublicKeys == nil {
+		b.tokenData.PublicKeys = make(map[string]string)
+	}
+	b.tokenData.PublicKeys[b.Name] = hex.EncodeToString(b.publicKey)
+
 	// 1. Absorve alertas órfãos com prioridade máxima
+
 	b.orphanMu.Lock()
 	for _, orphan := range b.orphanAlerts {
 		if _, already := b.tokenData.Assigned[orphan.AlertID]; !already {
@@ -887,6 +892,8 @@ process:
 			}
 		}
 	}
+
+	b.cleanAssigned()
 
 	// 4. Recupera missões de drones que falharam mantendo o tipo original do alerta
 	for alertID, droneID := range b.tokenData.Assigned {
@@ -1015,8 +1022,6 @@ process:
 	}
 	b.tokenData.PendingAlerts = stillPending
 	b.tokenData.Round++
-
-	b.cleanAssigned()
 
 	// Libera a posse do token local e prepara envio para a rede
 	b.hasToken = false
@@ -1212,9 +1217,17 @@ func (b *Broker) enviaDrone(droneID string, alert AlertPayload) bool {
 }
 
 // -------------token ring: limpeza de atribuições antigas
-// Remove do mapa assigned os alertas cujo drone já voltou para AVAILABLE.
+// Remove do mapa assigned os alertas cujo drone já voltou para AVAILABLE ou cuja missão foi concluída/falhou.
 func (b *Broker) cleanAssigned() {
 	for alertID, droneID := range b.tokenData.Assigned {
+		// Se a missão já foi concluída ou falhou no log histórico, limpa imediatamente
+		if rec, exists := b.tokenData.MissionLog[alertID]; exists {
+			if rec.Status == MissionDone || rec.Status == MissionFailed {
+				delete(b.tokenData.Assigned, alertID)
+				continue
+			}
+		}
+
 		status, ok := b.tokenData.DroneStatus[droneID]
 		if !ok {
 			continue
@@ -1288,8 +1301,11 @@ func (b *Broker) passToken(data TokenPayload) {
 	b.hasToken = true
 	b.lastTokenSeen = time.Now()
 	b.tokenMu.Unlock()
-	time.Sleep(2 * time.Second)
-	go b.tokenLoop()
+	go func() {
+		time.Sleep(2 * time.Second)
+		b.tokenLoop()
+	}()
+
 }
 
 // -------------token ring: envio TCP do token
