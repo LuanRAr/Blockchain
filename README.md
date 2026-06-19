@@ -138,10 +138,12 @@ Todas as mensagens trafegam como JSON delimitado por newline (`json.Encoder`).
 ### Pré-requisitos
 - Docker ≥ 24 e Docker Compose V2
 
-### Subir tudo de uma vez
+### 1. Subir a infraestrutura
+
+Execute em um terminal. O flag `-d` roda em segundo plano; omita-o se quiser ver os logs de todos os serviços.
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
 Isso inicializa:
@@ -149,15 +151,58 @@ Isso inicializa:
 - **4 brokers** (Norte, Sul, Leste, Oeste) em `10.200.0.17/18/20/26:5000`
 - **8 sensores** (Radar e Naval por setor)
 - **8 drones** (dois por setor)
-- **1 cliente interativo** (NavegacaoNorte por padrão)
 
-### Acessar o cliente interativo
+> [!TIP]
+> Aguarde alguns segundos antes de abrir o cliente para que os ledgers concluam a sincronização inicial e os drones se registrem nos brokers.
+
+### 2. Abrir o cliente interativo
+
+O cliente precisa de um terminal interativo (stdin + TTY). Em um **novo terminal**, execute:
 
 ```bash
-docker attach ormuz_client
+docker compose run --rm -it client
 ```
 
-### Parar e limpar
+Isso abre o console da empresa configurada em `COMPANY` (padrão: `NavegacaoNorte`):
+
+```
+  🚀 Bem-vindo ao Console Ormuz!
+  Empresa : NavegacaoNorte
+  Saldo   : 500 créditos
+
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║         CONSÓRCIO ORMUZ — NavegacaoNorte                        ║
+  ╠══════════════════════════════════════════════════════════════════╣
+  ║  [1] Consultar saldo de créditos                                 ║
+  ║  [2] Requisitar escolta de drone                                 ║
+  ║  [3] Ver histórico de transações                                 ║
+  ║  [4] Ler laudos de missão                                        ║
+  ║  [0] Sair                                                        ║
+  ╚══════════════════════════════════════════════════════════════════╝
+```
+
+Para abrir um cliente de **outra empresa**, sobrescreva a variável `COMPANY`:
+
+```bash
+docker compose run --rm -it -e COMPANY=NavegacaoSul client
+```
+
+Empresas disponíveis: `NavegacaoNorte` · `NavegacaoSul` · `NavegacaoLeste` · `NavegacaoOeste` · `ConsorcioGeral`
+
+### 3. Acompanhar os logs da infraestrutura
+
+```bash
+# Todos os serviços
+docker compose logs -f
+
+# Apenas os brokers
+docker compose logs -f broker-norte broker-sul broker-leste broker-oeste
+
+# Apenas os ledgers
+docker compose logs -f ledger-norte ledger-sul ledger-leste ledger-oeste
+```
+
+### 4. Parar e limpar
 
 ```bash
 docker compose down
